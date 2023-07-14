@@ -1,0 +1,244 @@
+
+## Libraries
+import pandas as pd
+import datetime
+import seaborn as sns
+import numpy as np
+from scipy.stats import norm
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.model_selection import train_test_split
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow import clip_by_value
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+from sklearn.cluster import AffinityPropagation
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import ElasticNet
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import PolynomialFeatures
+
+## Read data and manipulation
+
+df = pd.read_csv('C:/Users/tphuselc/Desktop/Work/kayseri.csv')
+
+df.head(4)
+
+df.drop('Ilan No', inplace=True, axis=1)
+
+one_hot_encoded_training_predictors = pd.get_dummies(df)
+one_hot_encoded_training_predictors.head(5)
+
+plt.figure(figsize=(12,12))
+sns.heatmap(one_hot_encoded_training_predictors.corr(), cmap="RdBu")
+plt.title("Correlations Between Variables", size=12)
+plt.show()
+
+## One-Hot Encoding
+
+X = one_hot_encoded_training_predictors.drop("Fiyat", axis=1)
+y = one_hot_encoded_training_predictors["Fiyat"]
+one_hot_encoded_training_predictors.head(3)
+
+X_train, X_test, y_train, y_test = train_test_split(X,y, test_size = 0.1, random_state = 42)
+
+mu = X_train.mean(axis = 0)
+sigma = X_train.std(axis = 0)
+X_train = (X_train - mu) / sigma
+X_test = (X_test - mu) / sigma
+
+## Deep learning section
+
+inputs = keras.Input(shape = (X_train.shape[1],))
+features = layers.Dense(1024, activation = "relu")(inputs)
+dropout = layers.Dropout(0.05)(features)
+features = layers.Dense(512, activation = "relu")(dropout)
+dropout = layers.Dropout(0.05)(features)
+features = layers.Dense(256, activation = "relu")(dropout)
+dropout = layers.Dropout(0.05)(features)
+outputs = layers.Dense(1)(dropout)
+mdl = keras.Model(inputs = inputs, outputs = outputs)
+mdl.compile(optimizer = "adam", loss = "mse", metrics = ["mape"])
+mdl.fit(X_train, y_train, epochs = 1000)
+
+# When we use our model to test the test dataset, we got the following results
+
+score = mdl.evaluate(X_test, y_test, verbose=0)
+print('Test loss:', score[0])
+print(f'Test mape: %{score[1]:.2f}')
+
+## Result Explanation
+
+# Calculating prediction values
+
+predictions = []
+for i in range(len(X_test)):  
+  data_for_prediction = X_test.iloc[i]
+  data_for_prediction_array = data_for_prediction.values.reshape(1, -1)
+  predictions.append(mdl.predict(data_for_prediction_array))
+
+# Plotting test values and predictions
+
+plt.figure(figsize=(20, 5))
+
+plt.subplot(1,2,1)
+plt.title("Test Values")
+plt.plot(np.asarray(y_test))
+
+plt.subplot(1,2,2)
+plt.title("Predictions")
+prediction_np = np.array(predictions)
+prediction_np = prediction_np.reshape(len(y_test),)
+plt.plot(prediction_np)
+
+# Calculating error values between test values and predictions
+
+error = []
+for i in range(len(X_test)):
+  error.append(y_test.iloc[i]-predictions[i])
+
+error = np.array(error)
+error = error.reshape(len(X_test),)
+
+# Plotting bar and histogram of error of prediction of tests and y_test values
+
+print('Error mean value is: ', f"{np.mean(abs(error)):.3f}")
+plt.figure(figsize=(20,5))
+
+plt.subplot(1,2,1)
+plt.title("Errors")
+plt.bar(np.arange(len(y_test)),error);
+
+plt.subplot(1,2,2)
+plt.title("Error Distribution")
+plt.hist(error);
+# Calculating prediction values
+
+predictions = []
+for i in range(len(X_test)):  
+  data_for_prediction = X_test.iloc[i]
+  data_for_prediction_array = data_for_prediction.values.reshape(1, -1)
+  predictions.append(mdl.predict(data_for_prediction_array))
+  # Plotting test values and predictions
+
+plt.figure(figsize=(20, 5))
+
+plt.subplot(1,2,1)
+plt.title("Test Values")
+plt.plot(np.asarray(y_test))
+
+plt.subplot(1,2,2)
+plt.title("Predictions")
+prediction_np = np.array(predictions)
+prediction_np = prediction_np.reshape(len(y_test),)
+plt.plot(prediction_np)
+# Calculating error values between test values and predictions
+
+error = []
+for i in range(len(X_test)):
+  error.append(y_test.iloc[i]-predictions[i])
+
+error = np.array(error)
+error = error.reshape(len(X_test),)
+# Plotting bar and histogram of error of prediction of tests and y_test values
+
+print('Error mean value is: ', f"{np.mean(abs(error)):.3f}")
+plt.figure(figsize=(20,5))
+
+plt.subplot(1,2,1)
+plt.title("Errors")
+plt.bar(np.arange(len(y_test)),error);
+
+plt.subplot(1,2,2)
+plt.title("Error Distribution")
+plt.hist(error);
+# The element with the minimum error
+
+min_index = np.argmin(abs(error))
+print("Index: ",min_index, 
+      "\nValue: ",y_test.iloc[min_index],
+      "\nPrediction: ", predictions[min_index][0][0],
+      "\nError: ", error[min_index])
+
+models = pd.DataFrame(columns=["Model","MAE","MSE","RMSE","R2 Score","RMSE (Cross-Validation)"])
+def rmse_cv(model):
+    rmse = np.sqrt(-cross_val_score(model, X, y, scoring="neg_mean_squared_error", cv=5)).mean()
+    return rmse
+    
+
+def evaluation(y, predictions):
+    mae = mean_absolute_error(y, predictions)
+    mse = mean_squared_error(y, predictions)
+    rmse = np.sqrt(mean_squared_error(y, predictions))
+    r_squared = r2_score(y, predictions)
+    return mae, mse, rmse, r_squared
+lin_reg = LinearRegression()
+lin_reg.fit(X_train, y_train)
+predictions = lin_reg.predict(X_test)
+
+mae, mse, rmse, r_squared = evaluation(y_test, predictions)
+print("MAE:", mae)
+print("MSE:", mse)
+print("RMSE:", rmse)
+print("R2 Score:", r_squared)
+print("-"*30)
+rmse_cross_val = rmse_cv(lin_reg)
+print("RMSE Cross-Validation:", rmse_cross_val)
+new_row = {"Model": "LinearRegression","MAE": mae, "MSE": mse, "RMSE": rmse, "R2 Score": r_squared, "RMSE (Cross-Validation)": rmse_cross_val}
+models = models.append(new_row, ignore_index=True)
+
+random_forest = RandomForestRegressor(n_estimators=1000)
+random_forest.fit(X_train, y_train)
+predictions = random_forest.predict(X_test)
+
+mae, mse, rmse, r_squared = evaluation(y_test, predictions)
+print("MAE:", mae)
+print("MSE:", mse)
+print("RMSE:", rmse)
+print("R2 Score:", r_squared)
+print("-"*30)
+rmse_cross_val = rmse_cv(random_forest)
+print("RMSE Cross-Validation:", rmse_cross_val)
+
+new_row = {"Model": "RandomForestRegressor","MAE": mae, "MSE": mse, "RMSE": rmse, "R2 Score": r_squared, "RMSE (Cross-Validation)": rmse_cross_val}
+models = models.append(new_row, ignore_index=True)
+elastic_net = ElasticNet()
+elastic_net.fit(X_train, y_train)
+predictions = elastic_net.predict(X_test)
+
+mae, mse, rmse, r_squared = evaluation(y_test, predictions)
+print("MAE:", mae)
+print("MSE:", mse)
+print("RMSE:", rmse)
+print("R2 Score:", r_squared)
+print("-"*30)
+rmse_cross_val = rmse_cv(elastic_net)
+print("RMSE Cross-Validation:", rmse_cross_val)
+
+new_row = {"Model": "ElasticNet","MAE": mae, "MSE": mse, "RMSE": rmse, "R2 Score": r_squared, "RMSE (Cross-Validation)": rmse_cross_val}
+models = models.append(new_row, ignore_index=True)
+models.sort_values(by="RMSE (Cross-Validation)")
+
+poly_reg = PolynomialFeatures(degree=2)
+X_train_2d = poly_reg.fit_transform(X_train)
+X_test_2d = poly_reg.transform(X_test)
+
+lin_reg = LinearRegression()
+lin_reg.fit(X_train_2d, y_train)
+predictions = lin_reg.predict(X_test_2d)
+
+mae, mse, rmse, r_squared = evaluation(y_test, predictions)
+print("MAE:", mae)
+print("MSE:", mse)
+print("RMSE:", rmse)
+print("R2 Score:", r_squared)
+print("-"*30)
+rmse_cross_val = rmse_cv(lin_reg)
+print("RMSE Cross-Validation:", rmse_cross_val)
+
+new_row = {"Model": "Polynomial Regression (degree=2)","MAE": mae, "MSE": mse, "RMSE": rmse, "R2 Score": r_squared, "RMSE (Cross-Validation)": rmse_cross_val}
+models = models.append(new_row, ignore_index=True)
+
+models.sort_values(by="RMSE (Cross-Validation)")
